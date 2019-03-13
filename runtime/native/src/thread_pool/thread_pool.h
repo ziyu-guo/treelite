@@ -9,6 +9,7 @@
 
 #include <treelite/common.h>
 #include <vector>
+#include <cstdlib>
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
@@ -27,9 +28,9 @@ class ThreadPool {
 
   ThreadPool(int num_worker, const TaskContext* context, TaskFunc task)
     : num_worker_(num_worker), context_(context), task_(task) {
-    CHECK(num_worker_ > 0 && num_worker_ <= std::thread::hardware_concurrency())
-    << "Number of worker threads must be between 1 and "
-    << std::thread::hardware_concurrency();
+    CHECK(num_worker_ >= 0 && num_worker_ < std::thread::hardware_concurrency())
+    << "Number of worker threads must be between 0 and "
+    << (std::thread::hardware_concurrency() - 1);
     for (int i = 0; i < num_worker_; ++i) {
       incoming_queue_.emplace_back(common::make_unique<SpscQueue<InputToken>>());
       outgoing_queue_.emplace_back(common::make_unique<SpscQueue<OutputToken>>());
@@ -41,7 +42,10 @@ class ThreadPool {
                                       context_);
     }
     /* bind threads to cores */
-    SetAffinity();
+    const char* bind_flag = getenv("TREELITE_BIND_THREADS");
+    if (bind_flag == nullptr || std::atoi(bind_flag) == 1) {
+      SetAffinity();
+    }
   }
   ~ThreadPool() {
     for (int i = 0; i < num_worker_; ++i) {

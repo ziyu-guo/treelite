@@ -7,6 +7,7 @@
 
 #include <treelite/predictor.h>
 #include <treelite/c_api_runtime.h>
+#include <string>
 #include "./c_api_error.h"
 
 using namespace treelite;
@@ -71,11 +72,9 @@ int TreeliteBatchGetDimension(void* handle,
 
 int TreelitePredictorLoad(const char* library_path,
                           int num_worker_thread,
-                          int include_master_thread,
                           PredictorHandle* out) {
   API_BEGIN();
-  Predictor* predictor = new Predictor(num_worker_thread,
-                                       static_cast<bool>(include_master_thread));
+  Predictor* predictor = new Predictor(num_worker_thread);
   predictor->Load(library_path);
   *out = static_cast<PredictorHandle>(predictor);
   API_END();
@@ -90,12 +89,19 @@ int TreelitePredictorPredictBatch(PredictorHandle handle,
                                   size_t* out_result_size) {
   API_BEGIN();
   Predictor* predictor_ = static_cast<Predictor*>(handle);
+  const size_t num_feature = predictor_->QueryNumFeature();
+  const std::string err_msg
+    = std::string("Too many columns (features) in the given batch. "
+                  "Number of features must not exceed ")
+      + std::to_string(num_feature);
   if (batch_sparse) {
     const CSRBatch* batch_ = static_cast<CSRBatch*>(batch);
+    CHECK_LE(batch_->num_col, num_feature) << err_msg;
     *out_result_size = predictor_->PredictBatch(batch_, verbose,
                                                (pred_margin != 0), out_result);
   } else {
     const DenseBatch* batch_ = static_cast<DenseBatch*>(batch);
+    CHECK_LE(batch_->num_col, num_feature) << err_msg;
     *out_result_size = predictor_->PredictBatch(batch_, verbose,
                                                (pred_margin != 0), out_result);
   }
